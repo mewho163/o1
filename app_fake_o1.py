@@ -147,8 +147,12 @@ def main():
     """)
 
     # Text input for user query
-    user_query = st.text_input("输入您的问题：", placeholder="例如：草莓这个词里有几个 R？")
-
+    user_query = st.text_area(
+        "输入您的问题：", 
+        placeholder="例如：草莓这个词里有几个 R？",
+        height=200
+    )
+    
     if user_query:
         st.write("正在生成响应...")
 
