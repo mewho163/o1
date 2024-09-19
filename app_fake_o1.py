@@ -4,7 +4,7 @@ import openai
 import os
 import json
 import time
-from dotenv import load_dotenv  # Import dotenv for loading environment variables
+from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
@@ -17,6 +17,12 @@ OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o')
 openai.api_key = OPENAI_API_KEY
 openai.api_base = OPENAI_BASE_URL
 
+def clean_response_content(content):
+    """Clean the response content to ensure valid JSON"""
+    # Remove any control characters or unwanted characters
+    content = content.replace('\n', ' ').replace('\r', '').replace('\\', '').strip()
+    return content
+
 def make_api_call(messages, max_tokens, is_final_answer=False):
     for attempt in range(3):
         try:
@@ -27,8 +33,26 @@ def make_api_call(messages, max_tokens, is_final_answer=False):
                 temperature=0.2
             )
             content = response.choices[0].message['content']
-            print("DEBUG: API response content:", content)
-            return json.loads(content) if content.startswith('{') else {"title": "Error", "content": content}
+            content = clean_response_content(content)
+            print("DEBUG: Cleaned API response content:", content)
+
+            # Attempt to parse the content as JSON and handle non-JSON content
+            try:
+                json_content = json.loads(content)
+                return json_content
+            except json.JSONDecodeError:
+                if is_final_answer:
+                    # Return the raw content if it cannot be fully parsed
+                    return {"title": "Final Answer", "content": content}
+                else:
+                    return {"title": "Error",
+                            "content": "Response format not as expected.",
+                            "next_action": "final_answer"}
+        except json.JSONDecodeError as json_e:
+            print(f"JSON Decode Error: {json_e}")
+            if attempt == 2:
+                return {"title": "Error",
+                        "content": f"Failed to generate valid JSON after 3 attempts. Error: {str(json_e)}"}
         except Exception as e:
             if attempt == 2:
                 if is_final_answer:
@@ -75,7 +99,7 @@ def generate_response(prompt):
 
     while True:
         start_time = time.time()
-        step_data = make_api_call(messages, 300)
+        step_data = make_api_call(messages, 4096)
         end_time = time.time()
         thinking_time = end_time - start_time
         total_thinking_time += thinking_time
@@ -100,7 +124,7 @@ def generate_response(prompt):
     messages.append({"role": "user", "content": "请根据上述推理提供最终答案。"})
 
     start_time = time.time()
-    final_data = make_api_call(messages, 200, is_final_answer=True)
+    final_data = make_api_call(messages, 4096, is_final_answer=True)
     end_time = time.time()
     thinking_time = end_time - start_time
     total_thinking_time += thinking_time
@@ -110,7 +134,7 @@ def generate_response(prompt):
     yield steps, total_thinking_time
 
 def main():
-    st.set_page_config(page_title="OpenAI Reasoning Chains",  layout="wide")
+    st.set_page_config(page_title="OpenAI Reasoning Chains", page_icon="", layout="wide")
 
     st.title("使用OpenAI创建推理链")
 
